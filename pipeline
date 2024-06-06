@@ -1,0 +1,72 @@
+pipeline {
+    agent {
+        label 'ubuntu-slave'
+    }
+    environment {
+        VERSION = "${BUILD_NUMBER}"
+        REGISTRY_URL = "ghcr.io/lifakir"
+    }
+    stages {
+        stage('Clone') {
+            steps {
+                echo 'Cloning...'
+                script {
+                    dir("${WORKSPACE}") {
+                        withCredentials([string(credentialsId: 'github_token', variable: 'token')]) {
+                            sh 'git clone  https://oauth2:${token}@github.com/lifakir/source-for-jenkins.git .'
+                        }
+                    }
+                }
+            }
+        }
+        stage('Build') {
+            steps {
+                echo "Building..."
+                script {
+                    dir('nginx') {
+                        sh '''
+                        sudo docker rm -f $(sudo docker ps -a) || echo "containers killed"
+                        sudo docker image prune -f
+                        sudo docker build -t ${REGISTRY_URL}/nginx:${VERSION} .
+                        '''
+                    }
+                    dir('apache') {
+                        sh '''
+                        sudo docker build -t ${REGISTRY_URL}/apache:${VERSION} .
+                        '''
+                    }
+                }
+            }
+        }
+        stage('Push') {
+            steps {
+                echo "Pushing to GHCR..."
+                withCredentials([string(credentialsId: 'github_token', variable: 'token')]) {
+                    sh '''
+                    echo $token | sudo docker login ghcr.io -u lifakir --password-stdin
+                    sudo docker push ${REGISTRY_URL}/apache:${VERSION}
+                    sudo docker push ${REGISTRY_URL}/nginx:${VERSION}
+                    '''
+                }
+            }
+        }
+        stage('Deploy') {
+            steps {
+                echo 'Deploying...'
+                sh '''
+                sudo docker pull ${REGISTRY_URL}/apache:${VERSION}
+                sudo docker pull ${REGISTRY_URL}/nginx:${VERSION}
+                sudo docker network create docker-network || echo "Docker network already exists"
+                sudo docker run -d --name apache --net docker-network ${REGISTRY_URL}/apache:${VERSION} 
+                sudo docker run -d --name nginx --net docker-network -p 80:80 ${REGISTRY_URL}/nginx:${VERSION} 
+                '''
+            }
+        }
+    }
+    post {
+        always {
+            echo 'Cleaning up...'
+            deleteDir()
+        }
+    }
+}
