@@ -13,7 +13,7 @@ pipeline {
                 script {
                     dir("${WORKSPACE}") {
                         withCredentials([string(credentialsId: 'github_token', variable: 'token')]) {
-                            sh 'git clone  https://oauth2:${token}@github.com/lifakir/source-for-jenkins.git .'
+                            sh 'git clone  https://oauth2:${token}@github.com/lifakir/source-for-jenkins.git source/'
                         }
                     }
                 }
@@ -23,14 +23,14 @@ pipeline {
             steps {
                 echo "Building..."
                 script {
-                    dir('nginx') {
+                    dir('source/nginx') {
                         sh '''
                         sudo docker rm -f $(sudo docker ps -a) || echo "containers killed"
                         sudo docker image prune -f
                         sudo docker build -t ${REGISTRY_URL}/nginx:${VERSION} .
                         '''
                     }
-                    dir('apache') {
+                    dir('source/apache') {
                         sh '''
                         sudo docker build -t ${REGISTRY_URL}/apache:${VERSION} .
                         '''
